@@ -1,0 +1,12 @@
+import { TopicState, Session, DelegationInfo, Config } from '../types.js';
+export declare function ensureDir(dirPath: string): Promise<void>;
+export declare function exists(filePath: string): Promise<boolean>;
+export declare function getTopicPath(topicName: string): string;
+export declare function listTopics(): Promise<string[]>;
+export declare function loadTopic(topicName: string): Promise<TopicState | null>;
+export declare function createTopic(topicName: string, description?: string): Promise<TopicState>;
+export declare function saveSession(topicName: string, session: Session): Promise<void>;
+export declare function createDelegation(topicName: string, agent: string, task: string, context: DelegationInfo['context'], modelTier: DelegationInfo['model_tier']): Promise<DelegationInfo>;
+export declare function loadConfig(): Promise<Config>;
+export declare function getAgentPath(agentName: string): string;
+export declare function loadAgent(agentName: string): Promise<string | null>;

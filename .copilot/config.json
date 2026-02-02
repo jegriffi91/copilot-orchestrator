@@ -1,0 +1,11 @@
+{
+    "model_tiers": {
+        "premium": "o1-preview",
+        "standard": "gpt-4o",
+        "cheap": "gpt-4o-mini"
+    },
+    "defaults": {
+        "coordinator": "premium",
+        "specialist": "cheap"
+    }
+}
