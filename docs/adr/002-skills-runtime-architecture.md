@@ -430,6 +430,89 @@ When a skill is loaded, the agent should acknowledge:
 
 This provides audit trail and debugging visibility.
 
+### Skill Compilation: stitch-skills.py
+
+While skills are authored in `docs/skills/` (LLM-agnostic), they must be compiled to vendor-specific locations for proper discovery.
+
+**Compilation Flow:**
+
+```
+docs/skills/                    ← Source of truth (LLM-agnostic)
+     │
+     ▼  stitch-skills.py
+     │
+     ├── .github/skills/        ← GitHub Copilot CLI
+     ├── .copilot/skills/       ← Alternative Copilot location
+     └── .cursor/skills/        ← Cursor (if needed)
+```
+
+**Compilation Script Responsibilities:**
+
+1. **Scan** `docs/skills/*/SKILL.md`
+2. **Validate** frontmatter (`name`, `description` required)
+3. **Transform** if needed (e.g., strip incompatible frontmatter fields)
+4. **Copy** to vendor-specific output directories
+5. **Log** skill registry for debugging
+
+**Example Implementation:**
+
+```python
+#!/usr/bin/env python3
+# stitch-skills.py
+
+from pathlib import Path
+import shutil
+
+SKILLS_SOURCE = Path("docs/skills")
+VENDOR_OUTPUTS = [
+    Path(".github/skills"),
+    Path(".copilot/skills"),
+]
+
+def stitch_skills():
+    for skill_dir in SKILLS_SOURCE.iterdir():
+        if not skill_dir.is_dir():
+            continue
+        skill_file = skill_dir / "SKILL.md"
+        if not skill_file.exists():
+            continue
+        
+        # Copy to each vendor location
+        for vendor_dir in VENDOR_OUTPUTS:
+            target = vendor_dir / skill_dir.name
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(skill_file, target / "SKILL.md")
+            
+            # Copy any templates
+            templates = skill_dir / "templates"
+            if templates.exists():
+                shutil.copytree(templates, target / "templates", 
+                               dirs_exist_ok=True)
+        
+        print(f"✓ Stitched: {skill_dir.name}")
+
+if __name__ == "__main__":
+    stitch_skills()
+    print("✨ Skills compiled to vendor directories.")
+```
+
+**Integration with Agents:**
+
+Run both scripts together:
+
+```bash
+# Compile agents and skills
+python3 docs/scripts/stitch-brain.py
+python3 docs/scripts/stitch-skills.py
+```
+
+Or add a combined command:
+
+```bash
+# In Makefile or package.json
+make stitch  # Runs both
+```
+
 ---
 
 ## Related Documents
