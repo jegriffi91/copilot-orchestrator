@@ -30,28 +30,41 @@ We need a layered architecture that separates:
 
 Adopt a **3-Layer Runtime Architecture** for skill management:
 
+> [!NOTE]
+> **Revision (per Deep Think review):** Added explicit Session State concept. Agent is now "The Soul" (identity + memory + router), Skills are "The Mind" (SOPs), MCPs are "The Hands".
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Layer 3: AGENT ORCHESTRATOR                            │
-│  ┌───────────────────────────────────────────────────┐  │
-│  │ • Simple routing loop: "Which skill for this?"    │  │
-│  │ • Loads skills into context window                │  │
-│  │ • Manages MCP server connections                  │  │
-│  └───────────────────────────────────────────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│  Layer 2: SKILLS                                        │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────────┐    │
-│  │ Code Review │ │ Unit Test   │ │ Security Scan   │    │
-│  │ SKILL.md    │ │ SKILL.md    │ │ SKILL.md        │    │
-│  └─────────────┘ └─────────────┘ └─────────────────┘    │
-├─────────────────────────────────────────────────────────┤
-│  Layer 1: MCP SERVERS                                   │
-│  ┌────────┐ ┌──────────┐ ┌─────────┐ ┌────────────┐     │
-│  │Postgres│ │FileSystem│ │  Git    │ │  Browser   │     │
-│  │  MCP   │ │   MCP    │ │  MCP    │ │    MCP     │     │
-│  └────────┘ └──────────┘ └─────────┘ └────────────┘     │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 LAYER 3: AGENT (The Soul)                   │
+│  • Identity (Persona from docs/personas/)                   │
+│  • Memory (Session State, Retry Policy, Token Management)   │
+│  • Router (Reads _skill_catalog.md to select procedures)    │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │ Loads                         │ Loads
+               ▼                               ▼
+┌─────────────────────────────┐ ┌─────────────────────────────┐
+│  LAYER 2: SKILL (The Mind)  │ │  LAYER 2: SKILL (The Mind)  │
+│  "Code Review SOP"          │ │  "Testing SOP"              │
+│  • Procedure (Steps)        │ │  • Procedure (Steps)        │
+│  • Verification (Contract)  │ │  • Verification (Contract)  │
+└──────────────┬──────────────┘ └──────────────┬──────────────┘
+               │ Calls                         │ Calls
+               ▼                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 LAYER 1: MCP (The Hands)                    │
+│      [Git]    [Postgres]    [FileSystem]    [Linter]        │
+│      (Atomic, Stateless, Logic-Free)                        │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Session State (Implicit Layer)
+
+The Agent manages a **Session State** (the context window) which determines:
+- Which skills are currently loaded
+- Token budget remaining
+- When to "unload" a skill to make room for another
+
+This is not a separate layer but a critical responsibility of the Agent.
 
 ### Layer 1: MCP Servers (The Hands)
 
@@ -430,36 +443,138 @@ When a skill is loaded, the agent should acknowledge:
 
 This provides audit trail and debugging visibility.
 
-### Skill Compilation: stitch-skills.py
+### Skill Publishing: publish-skills.py
 
-While skills are authored in `docs/skills/` (LLM-agnostic), they must be compiled to vendor-specific locations for proper discovery.
+> [!NOTE]
+> **Renamed from stitch-skills.py** (per Deep Think): This is a "Publisher/Adapter", not a compiler. It adapts rich source files to vendor-specific formats.
 
-**Compilation Flow:**
+While skills are authored in `docs/skills/` (LLM-agnostic), they must be published to vendor-specific locations for proper discovery.
+
+**Publishing Flow:**
 
 ```
 docs/skills/                    ← Source of truth (LLM-agnostic)
      │
-     ▼  stitch-skills.py
+     ▼  publish-skills.py
      │
      ├── .github/skills/        ← GitHub Copilot CLI
+     │   └── _skill_catalog.md  ← Discovery index
      ├── .copilot/skills/       ← Alternative Copilot location
      └── .cursor/skills/        ← Cursor (if needed)
 ```
 
-**Compilation Script Responsibilities:**
+**Publisher Responsibilities:**
 
 1. **Scan** `docs/skills/*/SKILL.md`
 2. **Validate** frontmatter (`name`, `description` required)
-3. **Transform** if needed (e.g., strip incompatible frontmatter fields)
-4. **Copy** to vendor-specific output directories
-5. **Log** skill registry for debugging
+3. **Shadow Frontmatter** — Strip incompatible fields for Copilot
+4. **Generate Skill Catalog** — `_skill_catalog.md` for agent discovery
+5. **Copy** to vendor-specific output directories
 
-**Example Implementation:**
+---
+
+### The Shadow Frontmatter Pattern
+
+GitHub Copilot CLI crashes on unknown frontmatter fields. Solution: keep rich metadata in source, strip for output.
+
+**Source (`docs/skills/code-review/SKILL.md`):**
+```yaml
+---
+name: code-review
+description: Perform structured code review
+required_mcps: [filesystem, git]       # ← Rich metadata
+trigger_phrases: ["review this code"]  # ← Rich metadata
+tags: [quality, review]                # ← Rich metadata
+---
+```
+
+**Published (`.github/skills/code-review/SKILL.md`):**
+```yaml
+---
+name: code-review
+description: Perform structured code review
+---
+
+<!-- SKILL_METADATA
+required_mcps: [filesystem, git]
+trigger_phrases: ["review this code"]
+tags: [quality, review]
+-->
+
+## Context
+...
+```
+
+The publisher:
+1. Strips non-standard YAML fields
+2. Injects them as an HTML comment (LLMs can still read it)
+3. Copilot CLI parses cleanly
+
+---
+
+### Skill Catalog Artifact
+
+Instead of runtime filesystem scanning, generate a discovery index:
+
+**`_skill_catalog.md`:**
+```markdown
+# Skill Catalog
+
+| Name | Description | Triggers |
+|------|-------------|----------|
+| code-review | Perform structured code review | "review this code", "code review" |
+| unit-testing | Write unit tests for Swift code | "write tests", "add tests" |
+| security-scan | Check for OWASP vulnerabilities | "security check", "audit" |
+
+## Usage
+To load a skill, read the corresponding `<name>/SKILL.md` file.
+```
+
+**Agent Workflow:**
+1. Agent reads `_skill_catalog.md` (cheap, single file)
+2. Matches user intent to skill via triggers
+3. Loads only the needed `SKILL.md` (on-demand)
+
+---
+
+### Core Skill (Rollback Safety)
+
+> [!IMPORTANT]
+> **Context Amnesia Risk**: Without "The Law" permanently loaded, agents might forget critical rules.
+
+Create `docs/skills/common-core/SKILL.md` containing non-negotiable rules that **every agent loads by default**:
+
+```yaml
+---
+name: common-core
+description: Non-negotiable rules for all agents
+---
+
+## Verification Requirements
+All code changes MUST pass Tier 1 verification before output.
+
+## Security Rules
+- Never commit secrets or credentials
+- Validate all user inputs
+- Use parameterized queries
+
+## Code Quality
+- Code must compile without errors
+- No force unwraps in production code
+- Handle all error cases explicitly
+```
+
+**Agent Policy:** Always load `common-core` first, then task-specific skills.
+
+---
+
+### Example Publisher Implementation
 
 ```python
 #!/usr/bin/env python3
-# stitch-skills.py
+# publish-skills.py
 
+import re
 from pathlib import Path
 import shutil
 
@@ -469,48 +584,107 @@ VENDOR_OUTPUTS = [
     Path(".copilot/skills"),
 ]
 
-def stitch_skills():
-    for skill_dir in SKILLS_SOURCE.iterdir():
-        if not skill_dir.is_dir():
+# Fields that Copilot CLI accepts
+SAFE_FRONTMATTER = {"name", "description"}
+
+def parse_frontmatter(content: str) -> tuple[dict, str]:
+    """Extract frontmatter and body."""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+    if not match:
+        return {}, content
+    yaml_text = match.group(1)
+    body = content[match.end():]
+    
+    # Simple YAML parsing
+    metadata = {}
+    for line in yaml_text.split("\n"):
+        if ":" in line:
+            key, val = line.split(":", 1)
+            metadata[key.strip()] = val.strip()
+    return metadata, body
+
+def shadow_frontmatter(content: str) -> str:
+    """Strip unsafe fields, inject as HTML comment."""
+    metadata, body = parse_frontmatter(content)
+    
+    # Separate safe/unsafe fields
+    safe = {k: v for k, v in metadata.items() if k in SAFE_FRONTMATTER}
+    unsafe = {k: v for k, v in metadata.items() if k not in SAFE_FRONTMATTER}
+    
+    # Rebuild frontmatter
+    new_fm = "---\n"
+    for k, v in safe.items():
+        new_fm += f"{k}: {v}\n"
+    new_fm += "---\n\n"
+    
+    # Inject unsafe as comment
+    if unsafe:
+        comment = "<!-- SKILL_METADATA\n"
+        for k, v in unsafe.items():
+            comment += f"{k}: {v}\n"
+        comment += "-->\n\n"
+        return new_fm + comment + body
+    
+    return new_fm + body
+
+def generate_catalog(skills: list[dict], output_dir: Path):
+    """Generate _skill_catalog.md for discovery."""
+    catalog = "# Skill Catalog\n\n"
+    catalog += "| Name | Description | Tags |\n"
+    catalog += "|------|-------------|------|\n"
+    
+    for skill in skills:
+        catalog += f"| {skill['name']} | {skill['description']} | {skill.get('tags', '')} |\n"
+    
+    (output_dir / "_skill_catalog.md").write_text(catalog)
+
+def publish_skills():
+    skills = []
+    
+    for skill_dir in sorted(SKILLS_SOURCE.iterdir()):
+        if not skill_dir.is_dir() or skill_dir.name == "README.md":
             continue
         skill_file = skill_dir / "SKILL.md"
         if not skill_file.exists():
             continue
         
-        # Copy to each vendor location
+        content = skill_file.read_text()
+        metadata, _ = parse_frontmatter(content)
+        skills.append(metadata)
+        
+        # Shadow frontmatter and publish
+        published_content = shadow_frontmatter(content)
+        
         for vendor_dir in VENDOR_OUTPUTS:
             target = vendor_dir / skill_dir.name
             target.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(skill_file, target / "SKILL.md")
-            
-            # Copy any templates
-            templates = skill_dir / "templates"
-            if templates.exists():
-                shutil.copytree(templates, target / "templates", 
-                               dirs_exist_ok=True)
+            (target / "SKILL.md").write_text(published_content)
         
-        print(f"✓ Stitched: {skill_dir.name}")
+        print(f"✓ Published: {skill_dir.name}")
+    
+    # Generate catalog for each vendor
+    for vendor_dir in VENDOR_OUTPUTS:
+        vendor_dir.mkdir(parents=True, exist_ok=True)
+        generate_catalog(skills, vendor_dir)
+        print(f"✓ Catalog: {vendor_dir}/_skill_catalog.md")
 
 if __name__ == "__main__":
-    stitch_skills()
-    print("✨ Skills compiled to vendor directories.")
+    publish_skills()
+    print("✨ Skills published to vendor directories.")
 ```
 
 **Integration with Agents:**
 
-Run both scripts together:
-
 ```bash
-# Compile agents and skills
+# Publish agents and skills
 python3 docs/scripts/stitch-brain.py
-python3 docs/scripts/stitch-skills.py
+python3 docs/scripts/publish-skills.py
 ```
 
-Or add a combined command:
+Or with Makefile:
 
 ```bash
-# In Makefile or package.json
-make stitch  # Runs both
+make publish  # Runs both
 ```
 
 ---
