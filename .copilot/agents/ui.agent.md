@@ -3,7 +3,7 @@ agent: ui
 name: Ui
 description: SwiftUI UI Development Specialist. Builds modern, performant, accessible interfaces.
 version: 1.0.0
-generated: 2026-02-14 12:19:18
+generated: 2026-02-14 12:49:04
 tags: common, design, swiftui
 ---
 

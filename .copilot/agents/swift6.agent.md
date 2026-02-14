@@ -3,7 +3,7 @@ agent: swift6
 name: Swift6
 description: Incremental Swift 6 Migration Specialist. Operates in small waves, stops at module boundaries.
 version: 1.0.0
-generated: 2026-02-14 12:19:18
+generated: 2026-02-14 12:49:04
 tags: swift6, common, ci
 ---
 
