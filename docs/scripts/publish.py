@@ -16,6 +16,7 @@ Usage:
   python3 docs/scripts/publish.py all
 """
 
+import argparse
 import os
 import re
 import sys
@@ -177,21 +178,36 @@ def _parse_multiline_scalar(yaml_text: str, key: str) -> str:
 def shadow_frontmatter(content: str) -> str:
     """
     Strip non-standard YAML fields from frontmatter for vendor compatibility.
-    Preserves only ALLOWED_FRONTMATTER_KEYS.
+    Preserves only ALLOWED_FRONTMATTER_KEYS. Non-standard fields are injected
+    as an HTML comment (<!-- SKILL_METADATA ... -->) so LLMs can still read them.
+    This follows the Shadow Frontmatter pattern from ADR-002.
     """
     meta, body = parse_frontmatter(content)
     if not meta:
         return content
 
-    filtered = {k: v for k, v in meta.items() if k in ALLOWED_FRONTMATTER_KEYS}
-    if not filtered:
-        return body
+    safe = {k: v for k, v in meta.items() if k in ALLOWED_FRONTMATTER_KEYS}
+    unsafe = {k: v for k, v in meta.items() if k not in ALLOWED_FRONTMATTER_KEYS}
 
-    lines = ["---"]
-    for k, v in filtered.items():
-        lines.append(f"{k}: {v}")
-    lines.append("---")
-    lines.append("")
+    lines = []
+    if safe:
+        lines.append("---")
+        for k, v in safe.items():
+            lines.append(f"{k}: {v}")
+        lines.append("---")
+        lines.append("")
+
+    # Inject non-standard fields as HTML comment per ADR-002
+    if unsafe:
+        lines.append("<!-- SKILL_METADATA")
+        for k, v in unsafe.items():
+            if isinstance(v, list):
+                lines.append(f"{k}: [{', '.join(v)}]")
+            else:
+                lines.append(f"{k}: {v}")
+        lines.append("-->")
+        lines.append("")
+
     lines.append(body)
     return "\n".join(lines)
 
@@ -274,10 +290,13 @@ def resolve_verification_link(link: str) -> Path | None:
     return PATHS["workflows"] / link
 
 
-def stitch_agent(filename: str, recipe: dict) -> None:
-    """Compile a single agent from persona + standards + skills."""
+def stitch_agent(filename: str, recipe: dict, dry_run: bool = False) -> dict:
+    """Compile a single agent from persona + standards + skills.
+    Returns a validation report dict for summary output.
+    """
     print(f"\n🧵 Compiling Agent: {filename}...")
 
+    report = {"agent": filename, "warnings": [], "rules": 0, "skills": 0}
     buf = []
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     agent_name = filename.replace(".agent.md", "").replace("-", " ").title()
@@ -301,6 +320,7 @@ def stitch_agent(filename: str, recipe: dict) -> None:
         _, p_body = parse_frontmatter(persona_content)
         buf.append(p_body)
     else:
+        report["warnings"].append(f"Missing persona: {recipe['persona']}")
         buf.append(f"# IDENTITY\nYou are the {recipe['description']}")
     buf.append("\n---\n")
 
@@ -313,8 +333,13 @@ def stitch_agent(filename: str, recipe: dict) -> None:
     for source_dir_name in recipe["sources"]:
         source_path = PATHS["standards"] / source_dir_name
         if not source_path.exists():
+            report["warnings"].append(f"Missing standards dir: {source_dir_name}/")
             print(f"  ⚠️  Skipping missing standards dir: {source_dir_name}")
             continue
+        md_files = list(source_path.glob("*.md"))
+        non_readme = [f for f in md_files if f.name.lower() != "readme.md"]
+        if not non_readme:
+            report["warnings"].append(f"Empty standards dir: {source_dir_name}/ (no .md files)")
 
         for file_path in sorted(source_path.glob("*.md")):
             if file_path.name.lower() == "readme.md":
@@ -357,6 +382,7 @@ def stitch_agent(filename: str, recipe: dict) -> None:
     total_rules = sum(len(r) for _, r in law_rules) + sum(
         len(r) for _, r in loop_rules
     )
+    report["rules"] = total_rules
     print(
         f"  📋 Extracted {total_rules} rules ({len(law_rules)} law + {len(loop_rules)} loop files)"
     )
@@ -406,6 +432,7 @@ def stitch_agent(filename: str, recipe: dict) -> None:
 
     # --- SKILLS Section ---
     skills = recipe.get("skills", [])
+    report["skills"] = len(skills)
     if skills:
         buf.append("\n---\n")
         buf.append("# 🛠️ SKILLS (Runtime Loading)\n")
@@ -419,40 +446,58 @@ def stitch_agent(filename: str, recipe: dict) -> None:
                 desc = meta.get("description", "No description.")
                 buf.append(f"- **{skill_name}** — {desc}")
             else:
+                report["warnings"].append(f"Missing skill: {skill_name}/SKILL.md")
                 buf.append(f"- **{skill_name}** — _(skill not found)_")
         buf.append(
             "\n> To load a skill, read `docs/skills/<name>/SKILL.md`.\n"
         )
 
     # --- Write ---
-    PATHS["agents_output"].mkdir(parents=True, exist_ok=True)
-    output_file = PATHS["agents_output"] / filename
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(buf))
+    if dry_run:
+        print(f"  🔍 [DRY RUN] Would write {filename} ({len(buf)} lines)")
+    else:
+        PATHS["agents_output"].mkdir(parents=True, exist_ok=True)
+        output_file = PATHS["agents_output"] / filename
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write("\n".join(buf))
 
     print(
         f"  ✅ {filename} ({len(buf)} lines, {len(collected_verification_paths)} workflows, {len(skills)} skills)"
     )
+    return report
 
 
-def publish_agents() -> None:
+def publish_agents(dry_run: bool = False) -> None:
     """Compile all agents from recipes."""
     print("═" * 50)
-    print("📦 PUBLISHING AGENTS")
+    print(f"📦 PUBLISHING AGENTS{' [DRY RUN]' if dry_run else ''}")
     print("═" * 50)
+    reports = []
     for agent_file, recipe in AGENT_RECIPES.items():
-        stitch_agent(agent_file, recipe)
-    print(f"\n✨ {len(AGENT_RECIPES)} agents compiled → {PATHS['agents_output']}")
+        report = stitch_agent(agent_file, recipe, dry_run=dry_run)
+        reports.append(report)
+
+    # --- Validation Summary ---
+    all_warnings = [(r["agent"], w) for r in reports for w in r["warnings"]]
+    if all_warnings:
+        print(f"\n{'─' * 50}")
+        print(f"⚠️  VALIDATION SUMMARY ({len(all_warnings)} issues)")
+        print(f"{'─' * 50}")
+        for agent, warning in all_warnings:
+            print(f"  {agent}: {warning}")
+        print()
+
+    print(f"✨ {len(AGENT_RECIPES)} agents compiled → {PATHS['agents_output']}")
 
 
 # ==========================================
 # 4. SKILLS SUBCOMMAND
 # ==========================================
 
-def publish_skills() -> None:
+def publish_skills(dry_run: bool = False) -> None:
     """Publish skills + references to vendor output directories."""
     print("═" * 50)
-    print("📦 PUBLISHING SKILLS")
+    print(f"📦 PUBLISHING SKILLS{' [DRY RUN]' if dry_run else ''}")
     print("═" * 50)
 
     skills_source = PATHS["skills_source"]
@@ -485,33 +530,37 @@ def publish_skills() -> None:
         # Apply shadow frontmatter
         published_content = shadow_frontmatter(content)
 
-        # Copy SKILL.md
-        target_dir = skills_output / skill_dir.name
-        target_dir.mkdir(parents=True, exist_ok=True)
-        (target_dir / "SKILL.md").write_text(published_content, encoding="utf-8")
+        if dry_run:
+            print(f"  🔍 [DRY RUN] Would publish {skill_dir.name}")
+        else:
+            # Copy SKILL.md
+            target_dir = skills_output / skill_dir.name
+            target_dir.mkdir(parents=True, exist_ok=True)
+            (target_dir / "SKILL.md").write_text(published_content, encoding="utf-8")
 
-        # Copy subdirectories (references/, templates/, etc.)
-        copied_subdirs = []
-        for subdir in sorted(skill_dir.iterdir()):
-            if subdir.is_dir() and not subdir.name.startswith("."):
-                target_subdir = target_dir / subdir.name
-                if target_subdir.exists():
-                    shutil.rmtree(target_subdir)
-                shutil.copytree(subdir, target_subdir)
-                file_count = sum(1 for _ in subdir.rglob("*") if _.is_file())
-                copied_subdirs.append(f"{subdir.name}({file_count})")
+            # Copy subdirectories (references/, templates/, etc.)
+            copied_subdirs = []
+            for subdir in sorted(skill_dir.iterdir()):
+                if subdir.is_dir() and not subdir.name.startswith("."):
+                    target_subdir = target_dir / subdir.name
+                    if target_subdir.exists():
+                        shutil.rmtree(target_subdir)
+                    shutil.copytree(subdir, target_subdir)
+                    file_count = sum(1 for _ in subdir.rglob("*") if _.is_file())
+                    copied_subdirs.append(f"{subdir.name}({file_count})")
 
-        subdirs_str = ", ".join(copied_subdirs) if copied_subdirs else "no subdirs"
-        print(f"  ✅ {skill_dir.name} → {subdirs_str}")
+            subdirs_str = ", ".join(copied_subdirs) if copied_subdirs else "no subdirs"
+            print(f"  ✅ {skill_dir.name} → {subdirs_str}")
 
         catalog_entries.append(
             {"name": skill_name, "description": skill_desc, "dir": skill_dir.name}
         )
 
     # Generate catalog
-    _generate_catalog(catalog_entries, skills_output)
+    if not dry_run:
+        _generate_catalog(catalog_entries, skills_output)
     print(
-        f"\n✨ {len(catalog_entries)} skills published → {skills_output}"
+        f"\n✨ {len(catalog_entries)} skills {'would be ' if dry_run else ''}published → {skills_output}"
     )
 
 
@@ -543,32 +592,42 @@ def _generate_catalog(entries: list[dict], output_dir: Path) -> None:
 # ==========================================
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 publish.py {agents|skills|all}")
-        print()
-        print("Subcommands:")
-        print("  agents  Compile agents from personas + standards")
-        print("  skills  Publish skills + references to vendor dirs")
-        print("  all     Run both agents and skills")
-        sys.exit(1)
-
-    command = sys.argv[1].lower()
+    parser = argparse.ArgumentParser(
+        description="Unified publish pipeline for copilot-orchestrator.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python3 publish.py agents          Compile agents from personas + standards
+  python3 publish.py skills          Publish skills + references to vendor dirs
+  python3 publish.py all             Run both agents and skills
+  python3 publish.py agents --dry-run  Preview agent compilation without writing
+""",
+    )
+    parser.add_argument(
+        "command",
+        choices=["agents", "skills", "all"],
+        help="Subcommand to run",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview what would be generated without writing files",
+    )
+    args = parser.parse_args()
 
     print(f"🧠 Publish Pipeline — {PROJECT_ROOT}")
+    if args.dry_run:
+        print("🔍 DRY RUN MODE — no files will be written")
     print()
 
-    if command == "agents":
-        publish_agents()
-    elif command == "skills":
-        publish_skills()
-    elif command == "all":
-        publish_agents()
+    if args.command == "agents":
+        publish_agents(dry_run=args.dry_run)
+    elif args.command == "skills":
+        publish_skills(dry_run=args.dry_run)
+    elif args.command == "all":
+        publish_agents(dry_run=args.dry_run)
         print()
-        publish_skills()
-    else:
-        print(f"❌ Unknown command: {command}")
-        print("Usage: python3 publish.py {agents|skills|all}")
-        sys.exit(1)
+        publish_skills(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":
