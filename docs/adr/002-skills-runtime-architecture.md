@@ -301,15 +301,15 @@ User Request
 
 ## Skills vs Agents Clarification
 
-The relationship between Skills and Agents is complementary:
+The relationship between Skills and Agents is complementary. Additionally, **Orchestrator logic and Agent logic are mutually exclusive**. Agents should never be aware of the "plumbing" (delegation files, result formats); they simply receive context and tools.
 
-| Aspect | Agent (`.agent.md`) | Skill (`SKILL.md`) |
-|--------|---------------------|---------------------|
-| **Identity** | "Who am I?" | "How do I do X?" |
-| **Scope** | Domain-level persona | Task-level procedure |
-| **Lifecycle** | Session-persistent | Loaded on-demand |
-| **Composition** | May reference multiple skills | Self-contained |
-| **State** | Maintains conversation context | Stateless instructions |
+| Aspect | Agent (`.agent.md`) | Skill (`SKILL.md`) |Orchestrator|
+|--------|---------------------|---------------------|---|
+| **Identity** | "Who am I?" | "How do I do X?" | "Who does what?" |
+| **Scope** | Domain-level persona | Task-level procedure | Workflow management |
+| **Lifecycle** | Session-persistent | Loaded on-demand | Always active |
+| **Composition** | May reference multiple skills | Self-contained | Coordinates agents |
+| **State** | Maintains conversation context | Stateless instructions | Manages session state |
 
 **Example Relationship:**
 - `testing.agent.md` (Agent) defines the Testing Specialist persona

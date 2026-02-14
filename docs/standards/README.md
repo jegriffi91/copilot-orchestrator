@@ -2,7 +2,9 @@
 
 ## Overview
 
-This directory contains **dual-layer documentation**: Human-readable guides with embedded machine-readable rules for AI agents. The stitcher script (`docs/scripts/stitch-brain.py`) extracts these rules to build specialized agent brains.
+This directory contains **dual-layer documentation**: Human-readable guides with embedded machine-readable rules for AI agents. Standards represent **The Law** — immutable domain constraints that every agent must follow.
+
+> In the [3-layer architecture](../adr/002-skills-runtime-architecture.md), Standards are part of the **Agent (Soul)** layer's constitutional knowledge. They define *what rules apply*, while [Skills](../skills/README.md) define *how to do things* and [Workflows](../workflows/README.md) define *how to verify*.
 
 ## Directory Structure
 
@@ -11,9 +13,11 @@ docs/standards/
 ├── common/          # Swift, concurrency, architecture patterns
 ├── design/          # Atlas design system, UI tokens
 ├── sdui/            # Server-Driven UI, GraphQL schemas
-├── testing/         # Unit testing, mocking, test infrastructure
-└── workflows/       # Verification processes, CI commands
+└── testing/         # Unit testing, mocking, test infrastructure
 ```
+
+> [!NOTE]
+> Verification workflows have moved to `docs/workflows/` — see [Workflows README](../workflows/README.md).
 
 ## The Stitcher Rules Schema
 
@@ -31,7 +35,7 @@ stitcher_rules:
   - "STEP: Name | CMD: command to run | SEVERITY: WARN"
   - "CMD: Description | ACTION: command here | SEVERITY: CRITICAL"
   - "BENEFIT: Description | ACTION: benefit text | SEVERITY: WARN"
-related_verification: docs/standards/workflows/verify_file.md
+related_verification: docs/workflows/verify_file.md
 ---
 ```
 
@@ -154,13 +158,13 @@ The stitcher uses tags to route rules to the correct specialized agents:
 
 ## Agent Recipes
 
-Configured in `docs/scripts/stitch-brain.py`:
+Configured in `docs/scripts/publish.py`:
 
 ```python
 AGENT_RECIPES = {
     "testing.agent.md": {
         "persona": "qa-kien.md",
-        "sources": ["testing", "workflows"],  # Folders to scan
+        "sources": ["testing"],  # Folders in docs/standards/ to scan
         "allowed_tags": ["testing", "common", "ci"],
         "description": "Specialist in Unit Testing, Mocking Strategies, and Snapshot Tests."
     },
@@ -286,12 +290,12 @@ Human-readable voice, tone, and mental models from the persona file.
 
 ## Quick Commands & Steps
 
-### From: docs/standards/workflows/tsan-quick-reference.md
+### From: docs/workflows/tsan-quick-reference.md
 
 - [CRITICAL] | CMD: Run TSan Sanitized | → python3 docs/scripts/tsan-sanitizer.py --scheme ECW
 - [WARN] | BENEFIT: Deduplication | → 47 raw issues → 12 unique patterns
 
-### From: docs/standards/workflows/verify-swift6-incremental.md
+### From: docs/workflows/verify-swift6-incremental.md
 
 - [CRITICAL] | STEP: Classify Change | → Determine tier (static/scoped/module) before verification
 - [CRITICAL] | STEP: Tier 1 Compile | CMD: xcodebuild build -quiet 2>&1 | grep '<YourFile>'
@@ -299,7 +303,7 @@ Human-readable voice, tone, and mental models from the persona file.
 ## Detailed Workflows
 
 ### Verify: verify-swift6-incremental
-[Full markdown content from docs/standards/workflows/verify-swift6-incremental.md]
+[Full markdown content from docs/workflows/verify-swift6-incremental.md]
 ```
 
 This separation ensures:
@@ -319,8 +323,8 @@ After stitching, check that:
 
 See actual implementations:
 - `docs/standards/testing/service-mocking.md` - RULE pattern
-- `docs/standards/workflows/tsan-quick-reference.md` - CMD + BENEFIT pattern
-- `docs/standards/workflows/verify-swift6-incremental.md` - STEP pattern (tiered verification)
+- `docs/workflows/tsan-quick-reference.md` - CMD + BENEFIT pattern
+- `docs/workflows/verify-swift6-incremental.md` - STEP pattern (tiered verification)
 - `docs/standards/sdui/component-generation.md` - Mixed patterns
 
 ---

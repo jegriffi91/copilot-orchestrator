@@ -2,6 +2,16 @@
 
 An MCP-based orchestration layer for GitHub Copilot CLI that enables **multi-agent delegation**, **model tiering**, and **topic-based isolation**.
 
+## Where This Fits
+
+In the [3-layer architecture](../../../docs/adr/002-skills-runtime-architecture.md), the orchestrator is a **Layer 1 MCP Server (The Hands)**. It provides atomic delegation and topic management tools that the Agent (Soul) invokes to coordinate work across specialist agents.
+
+| Layer | Component | This Server Provides |
+|-------|-----------|---------------------|
+| Agent (Soul) | Identity + Router | — (consumes this server) |
+| Skill (Mind) | Procedures | — |
+| **MCP (Hands)** | **Orchestrator** | `create_topic`, `delegate_to`, `switch_topic`, `check_delegations` |
+
 ## 🚀 Quick Setup
 
 This system runs as a local [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that GitHub Copilot CLI connects to.

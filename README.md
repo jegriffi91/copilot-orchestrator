@@ -1,38 +1,73 @@
 # Copilot Orchestrator
 
-**LLM-Agnostic Agent Generation Infrastructure for Enterprise Applications**
+**Harness-Agnostic Agentic Infrastructure for Enterprise Applications**
 
-A modular framework for generating specialized AI agents from composable knowledge building blocks. Currently supports GitHub Copilot CLI and Cursor, with an architecture designed to extend to any LLM.
+A composable framework for building specialized AI agents from modular knowledge layers. Designed to work with any LLM harness — GitHub Copilot CLI, Cursor, Claude, or custom tooling — without vendor lock-in.
 
 ---
 
 ## 🎯 Vision
 
-Enterprise codebases need more than generic AI assistance—they need **specialized agents** with deep domain knowledge and consistent behavior. This project provides:
+Enterprise codebases need more than generic AI assistance — they need **governed, composable agents** with deep domain knowledge, consistent behavior, and verifiable outputs. This project provides the scaffolding to build them.
 
-1. **Personas** — Voice, tone, and behavioral constraints for agents
-2. **Standards** — Technical knowledge blocks (tagged, filterable)
-3. **Workflows** — Verification procedures and CI commands
-4. **Stitcher** — A script that compiles these into deployable agents
+### The 3-Layer Architecture (Soul / Mind / Hands)
 
 ```
-┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
-│    PERSONAS     │     │   STANDARDS     │     │   WORKFLOWS     │
-│  (Voice/Tone)   │  +  │ (Tech Rules)    │  +  │ (Verification)  │
-└────────┬────────┘     └────────┬────────┘     └────────┬────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 ▼
-                    ┌────────────────────────┐
-                    │   stitch-brain.py      │
-                    │   (Agent Compiler)     │
-                    └────────────┬───────────┘
-                                 ▼
-                    ┌────────────────────────┐
-                    │  .github/agents/*.md   │
-                    │  (Deployable Agents)   │
-                    └────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                 LAYER 3: AGENT (The Soul)                   │
+│  • Identity (Persona from docs/personas/)                   │
+│  • Memory (Session State, Retry Policy, Token Budget)       │
+│  • Router (Reads Skill Catalog to select procedures)        │
+└──────────────┬───────────────────────────────┬──────────────┘
+               │ Loads                         │ Loads
+               ▼                               ▼
+┌─────────────────────────────┐ ┌─────────────────────────────┐
+│  LAYER 2: SKILL (The Mind)  │ │  LAYER 2: SKILL (The Mind)  │
+│  "Code Review SOP"          │ │  "Testing SOP"              │
+│  • Procedure (Steps)        │ │  • Procedure (Steps)        │
+│  • Verification (Contract)  │ │  • Verification (Contract)  │
+└──────────────┬──────────────┘ └──────────────┬──────────────┘
+               │ Calls                         │ Calls
+               ▼                               ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 LAYER 1: MCP (The Hands)                    │
+│      [Git]    [Postgres]    [FileSystem]    [Linter]        │
+│      (Atomic, Stateless, Deterministic)                     │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+**Agents** decide *what* to do. **Skills** define *how* to do it. **MCPs** *execute* it.
+
+---
+
+## 🧩 Core Concepts
+
+### What Goes Where
+
+| Component | Question It Answers | Location | Lifecycle |
+|-----------|---------------------|----------|-----------|
+| **Persona** | "Who am I?" — voice, tone, rejection criteria | `docs/personas/` | Session-persistent |
+| **Standard** | "What are the rules?" — immutable domain constraints | `docs/standards/` | Always loaded |
+| **Skill** | "How do I do X?" — step-by-step procedures | `docs/skills/` | Loaded on-demand |
+| **Workflow** | "How do I verify?" — tiered verification procedures | `docs/workflows/` | Loaded by skills |
+| **MCP Tool** | "What can I touch?" — atomic system capabilities | `.copilot/tools/` | Always available |
+
+### Agent vs Skill vs MCP
+
+| Aspect | Agent | Skill | MCP |
+|--------|-------|-------|-----|
+| **Purpose** | Identity + routing | Procedural SOP | Atomic tool |
+| **State** | Session context, memory | Stateless | Stateless |
+| **Granularity** | Domain-level persona | Task-level procedure | Single operation |
+| **Reuse** | Loads multiple skills | Shared across agents | Shared across skills |
+| **Example** | "Swift 6 Migration Specialist" | "Convert completion handlers to async/await" | `git diff`, `filesystem read` |
+
+**Rule of Thumb:**
+- If it's an *identity*, it's an **Agent**
+- If it's a *procedure*, it's a **Skill**
+- If it's a *tool call*, it's an **MCP**
+- If it's a *constraint*, it's a **Standard**
+- If it's a *verification step*, it's a **Workflow**
 
 ---
 
@@ -40,202 +75,154 @@ Enterprise codebases need more than generic AI assistance—they need **speciali
 
 ```
 copilot-orchestrator/
-├── docs/
-│   ├── personas/           # Agent personalities (voice, rejection criteria)
-│   │   ├── README.md
-│   │   ├── swift6-migration.md
-│   │   ├── qa-kien.md
-│   │   └── sdui-dev.md
-│   │
-│   ├── standards/          # Knowledge building blocks (tagged)
-│   │   ├── common/         # Base Swift/iOS rules
-│   │   ├── testing/        # Unit test patterns, mocking
-│   │   ├── design/         # Design tokens, UI patterns
-│   │   └── workflows/      # CI commands, verification steps
-│   │
-│   ├── scripts/
-│   │   └── stitch-brain.py # Agent compiler script
-│   │
-│   └── adr/                # Architecture Decision Records
+├── docs/                           # ← Source of Truth (harness-agnostic)
+│   ├── personas/                   #   Agent voice, tone, rejection criteria
+│   ├── standards/                  #   Immutable domain rules (THE LAW)
+│   │   ├── common/                 #     Base Swift/iOS patterns
+│   │   ├── design/                 #     Atlas design system tokens
+│   │   └── testing/                #     Unit test patterns, mocking
+│   ├── skills/                     #   Procedural knowledge (THE MIND)
+│   │   ├── skill-authoring/        #     Meta-skill: how to create skills
+│   │   ├── swiftui/               #     SwiftUI best practices + references
+│   │   ├── knowledge-architecture/ #     3-tier knowledge distribution
+│   │   └── README.md
+│   ├── workflows/                  #   Verification procedures (THE LOOP)
+│   ├── scripts/                    #   Build tooling
+│   │   ├── publish.py              #     Unified pipeline (agents + skills)
+│   │   ├── stitch-brain.py         #     [DEPRECATED] Wrapper → publish.py agents
+│   │   └── tsan-sanitizer.py       #     Output sanitizer for TSan logs
+│   ├── adr/                        #   Architecture Decision Records
+│   └── resources/                  #   Research & reference materials
 │
-├── .copilot/               # GitHub Copilot CLI integration
-│   ├── agents/             # Sample specialist agents
-│   ├── tools/orchestrator/ # MCP server for multi-agent delegation
-│   ├── config.json         # Model tiering configuration
-│   └── mcp-config.json     # MCP server registration
-│
-└── .github/agents/         # OUTPUT: Generated agent files
+├── .copilot/                       # ← Vendor: GitHub Copilot CLI
+│   ├── agents/                     #   Compiled specialist agents
+│   ├── skills/                     #   Published skills + references
+│   ├── tools/orchestrator/         #   MCP server (multi-agent delegation)
+│   ├── config.json                 #   Model tiering configuration
+│   └── mcp-config.json             #   MCP server registration
 ```
 
 ---
 
-## 🚀 Quick Start
+## � How It Works
 
-### 1. Generate Agents
+### Runtime Lifecycle
+
+```
+User Request
+     │
+     ▼
+┌─────────────────────┐
+│ 1. Parse Intent      │  "I need to review this code"
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ 2. Match Skill       │  Skill Catalog → code-review
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ 3. Load Skill        │  Inject docs/skills/code-review/SKILL.md
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ 4. Execute via MCP   │  Agent follows procedure, calls tools
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ 5. Verify            │  Run verification from docs/workflows/
+└─────────────────────┘
+     │
+     ▼
+┌─────────────────────┐
+│ 6. Cleanup           │  Unload skill, summarize results
+└─────────────────────┘
+```
+
+### Agent & Skill Compilation
+
+For harnesses that need pre-compiled agents (e.g., GitHub Copilot CLI), `publish.py` compiles Persona + Standards into deployable agent files and publishes skills:
 
 ```bash
-python3 docs/scripts/stitch-brain.py
+python3 docs/scripts/publish.py agents   # Compile agents
+python3 docs/scripts/publish.py skills   # Publish skills + references
+python3 docs/scripts/publish.py all      # Both
 ```
 
-This compiles all configured agents to `.github/agents/`.
+Compiled agents contain:
+- **IDENTITY** — Persona voice and mental model
+- **THE LAW** — Immutable rules from `docs/standards/` (RULE types)
+- **THE LOOP** — Verification steps from `docs/workflows/` (STEP/CMD types)
 
-### 2. Configure Recipes
+See [ADR-001](docs/adr/001-stitched-brain-architecture.md) for the full compilation architecture.
 
-Edit `docs/scripts/stitch-brain.py` to define new agents:
+---
+
+## � Quick Start
+
+### 1. Generate Agents & Publish Skills
+
+```bash
+python3 docs/scripts/publish.py all
+```
+
+### 2. Configure a New Agent Recipe
 
 ```python
-AGENT_RECIPES = {
-    "testing.agent.md": {
-        "persona": "qa-kien.md",
-        "sources": ["testing", "workflows"],
-        "allowed_tags": ["testing", "common", "ci"],
-        "description": "Unit Testing Specialist"
-    }
-}
-```
-
-### 3. Use with Copilot CLI
-
-Generated agents in `.github/agents/` are automatically available when GitHub Copilot CLI detects the repository.
-
----
-
-## 🧠 The "Stitched Brain" Architecture
-
-### Core Concepts
-
-| Component | Purpose | Location |
-|-----------|---------|----------|
-| **Persona** | Defines agent voice, mental model, rejection criteria | `docs/personas/*.md` |
-| **Standards** | Tagged technical rules (stitcher_rules in frontmatter) | `docs/standards/**/*.md` |
-| **Workflows** | Verification procedures linked via `related_verification` | `docs/standards/workflows/*.md` |
-| **Recipe** | Maps persona + standards → output agent | `stitch-brain.py` |
-
-### How Stitching Works
-
-1. **Persona Injection** — Agent identity and communication style
-2. **Rule Extraction** — Parses `stitcher_rules` from standards frontmatter
-3. **Tag Filtering** — Only includes rules matching recipe's `allowed_tags`
-4. **Verification Linking** — Pulls in workflows from `related_verification`
-5. **Output Generation** — Writes structured agent file with THE LAW + THE LOOP
-
-### Frontmatter Schema
-
-Standards files use YAML frontmatter:
-
-```yaml
----
-tags: [swift6, common]
-stitcher_rules:
-  - "RULE: No force unwraps | ACTION: Use guard/if-let | SEVERITY: CRITICAL"
-  - "STEP: Run tests | CMD: swift test | SEVERITY: WARN"
-related_verification: verify_build.md
----
-```
-
----
-
-## 🎭 MCP Orchestrator (Advanced)
-
-For multi-agent workflows with model tiering, the project includes an MCP server:
-
-```
-.copilot/tools/orchestrator/
-├── src/index.ts       # MCP server implementation
-├── package.json
-└── README.md          # Setup instructions
-```
-
-### Features
-
-- **Model Tiering** — Premium models for planning, cheap models for execution
-- **Topic Isolation** — Switch between isolated work contexts
-- **Agent Delegation** — Spawn specialist agents in tmux panes
-- **Session Persistence** — Separate from native Copilot state
-
-See [`.copilot/tools/orchestrator/README.md`](.copilot/tools/orchestrator/README.md) for setup.
-
----
-
-## 📝 Creating New Agents
-
-### Step 1: Create Persona
-
-```markdown
-<!-- docs/personas/my-persona.md -->
----
-id: my_persona
-role: Role Title
-specialty: [Area1, Area2]
-voice: "Adjective, Adjective"
----
-
-# IDENTITY: The Title
-
-Core philosophy description.
-
-## 🧠 Mental Model
-1. **Principle 1:** Explanation
-
-## 🚫 Rejection Criteria
-- **Anti-pattern 1:** Why it's rejected
-```
-
-### Step 2: Add Standards
-
-```markdown
-<!-- docs/standards/my-domain/rule.md -->
----
-tags: [my-domain, common]
-stitcher_rules:
-  - "RULE: Rule Name | ACTION: What to do | SEVERITY: CRITICAL"
-related_verification: my_workflow.md
----
-
-# Rule Documentation
-Detailed explanation...
-```
-
-### Step 3: Configure Recipe
-
-```python
-# In stitch-brain.py
+# In docs/scripts/publish.py
 AGENT_RECIPES["my-agent.agent.md"] = {
     "persona": "my-persona.md",
-    "sources": ["my-domain", "common"],
-    "allowed_tags": ["my-domain", "common"],
-    "description": "My Agent Description"
+    "sources": ["common", "testing"],
+    "allowed_tags": ["testing", "common"],
+    "skills": ["swiftui"],  # Skills this agent can load
+    "description": "My Specialist Agent"
 }
 ```
 
-### Step 4: Generate
+### 3. Create a New Skill
 
 ```bash
-python3 docs/scripts/stitch-brain.py
+# Ask your AI assistant:
+"Using the skill-authoring skill, help me create a new skill for <purpose>"
 ```
+
+Or follow the [Skill Authoring Guide](docs/skills/skill-authoring/SKILL.md).
+
+### 4. Use with Any Harness
+
+Generated agents in `.copilot/agents/` are automatically available to GitHub Copilot CLI. Published skills in `.copilot/skills/` provide on-demand domain knowledge. Source skills in `docs/skills/` can be loaded by any harness that reads markdown.
 
 ---
 
 ## 🔮 LLM Portability
 
-The architecture is designed to be LLM-agnostic:
+The architecture is harness-agnostic by design:
 
-| Target | Status | Output Format |
-|--------|--------|---------------|
-| GitHub Copilot CLI | ✅ Active | `.github/agents/*.md` |
-| Cursor | 🔄 Planned | `.cursorrules` |
-| Claude/Anthropic | 🔄 Planned | System prompts |
-| Custom MCP | 🔄 Planned | Tool-based injection |
+| Target | Status | Integration |
+|--------|--------|-------------|
+| GitHub Copilot CLI | ✅ Active | `.copilot/agents/` + MCP server |
+| Cursor | 🔄 Planned | `.cursor/rules/` via `publish.py skills` |
+| Claude / Anthropic | 🔄 Planned | System prompts + MCP |
+| Custom Tooling | 🔄 Planned | Direct `docs/` consumption |
 
-The same personas and standards can generate agents for any target by adapting the output template in `stitch-brain.py`.
+The same personas, standards, and skills generate agents for any target. Only the compilation/publishing step changes.
 
 ---
 
-## 📚 Related Documentation
+## 📚 Documentation
 
-- [Personas README](docs/personas/README.md) — Creating agent personalities
-- [Orchestrator README](.copilot/tools/orchestrator/README.md) — MCP server setup
-- [ADR-001](docs/adr/001-stitched-brain-architecture.md) — Architecture decision record
+| Document | Purpose |
+|----------|---------|
+| [Personas README](docs/personas/README.md) | Creating agent identities |
+| [Standards README](docs/standards/README.md) | Writing domain rules |
+| [Skills README](docs/skills/README.md) | Building procedural knowledge |
+| [Workflows README](docs/workflows/README.md) | Verification procedures |
+| [Orchestrator README](.copilot/tools/orchestrator/README.md) | MCP server setup |
+| [ADR-001](docs/adr/001-stitched-brain-architecture.md) | Stitched Brain architecture |
+| [ADR-002](docs/adr/002-skills-runtime-architecture.md) | Skills Runtime architecture |
 
 ---
 

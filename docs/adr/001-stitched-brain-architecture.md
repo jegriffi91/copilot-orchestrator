@@ -39,7 +39,7 @@ Implement a **"Stitched Brain" Architecture** that separates concerns into three
 - CI commands, verification procedures, troubleshooting guides
 - Linked via `related_verification` frontmatter field
 - Injected into agent's "Loop" section
-- Stored in `docs/standards/workflows/*.md`
+- Stored in `docs/workflows/*.md`
 
 ### Compilation via Recipes
 A Python script (`stitch-brain.py`) compiles these layers:
