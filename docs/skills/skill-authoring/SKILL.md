@@ -130,7 +130,6 @@ AGENT_RECIPES = {
         "persona": "<persona-file>.md",
         "sources": ["common", "workflows"],
         "allowed_tags": ["<tag1>", "<tag2>", "common"],
-        "skills": ["<skill-name>"],  # Skills this agent can load
         "description": "Brief description"
     }
 }

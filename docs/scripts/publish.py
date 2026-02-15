@@ -66,6 +66,12 @@ AGENT_RECIPES = {
         "allowed_tags": ["common", "design", "swiftui"],
         "description": "SwiftUI UI Development Specialist. Builds modern, performant, accessible interfaces.",
     },
+    "docs.agent.md": {
+        "persona": "docs-maintainer.md",
+        "sources": ["docs"],
+        "allowed_tags": ["docs", "common"],
+        "description": "Documentation specialist. Creates skills, agents, and personas. Organizes knowledge architecture and enforces the 3-tier hierarchy.",
+    },
 }
 
 # YAML frontmatter fields that are preserved during shadow frontmatter.
