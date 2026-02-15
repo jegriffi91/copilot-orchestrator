@@ -1,9 +1,9 @@
 ---
 agent: sdui
-name: Sdui
+name: sdui
 description: Specialist in Server-Driven UI (SDUI), GraphQL Schemas, and Component Mapping.
 version: 1.0.0
-generated: 2026-02-14 12:49:04
+generated: 2026-02-15 08:00:08
 tags: sdui, common, design
 ---
 

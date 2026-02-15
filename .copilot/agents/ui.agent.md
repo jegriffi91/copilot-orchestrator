@@ -1,9 +1,9 @@
 ---
 agent: ui
-name: Ui
+name: ui
 description: SwiftUI UI Development Specialist. Builds modern, performant, accessible interfaces.
 version: 1.0.0
-generated: 2026-02-14 12:49:04
+generated: 2026-02-15 08:00:08
 tags: common, design, swiftui
 ---
 
@@ -122,14 +122,3 @@ xcodebuild -scheme <SCHEME> -destination 'generic/platform=iOS Simulator' build 
 
 
 ⚠️ **For troubleshooting:** Read `docs/workflows/swift6-verify.md` before improvising.
-
-
----
-
-# 🛠️ SKILLS (Runtime Loading)
-
-> You can load these skills on-demand for domain-specific guidance.
-
-- **swiftui** — Write, review, or improve SwiftUI code following best practices for state management, view composition, performance, modern APIs, Swift concurrency, and iOS 26+ Liquid Glass adoption.
-
-> To load a skill, read `docs/skills/<name>/SKILL.md`.

@@ -1,9 +1,9 @@
 ---
 agent: swift6
-name: Swift6
+name: swift6
 description: Incremental Swift 6 Migration Specialist. Operates in small waves, stops at module boundaries.
 version: 1.0.0
-generated: 2026-02-14 12:49:04
+generated: 2026-02-15 08:00:08
 tags: swift6, common, ci
 ---
 
@@ -83,14 +83,3 @@ xcodebuild -scheme <SCHEME> -destination 'generic/platform=iOS Simulator' build 
 
 
 ⚠️ **For troubleshooting:** Read `docs/workflows/swift6-verify.md` before improvising.
-
-
----
-
-# 🛠️ SKILLS (Runtime Loading)
-
-> You can load these skills on-demand for domain-specific guidance.
-
-- **swift6** — Review and migrate Swift code to Swift 6 Strict Concurrency
-
-> To load a skill, read `docs/skills/<name>/SKILL.md`.
