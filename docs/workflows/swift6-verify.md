@@ -1,43 +1,51 @@
 # Workflow: Verify Swift 6 Migration
 
-Verification procedure for Swift 6 strict concurrency changes. Referenced by the [swift6 skill](../skills/swift6/SKILL.md).
+Verification procedure for Swift 6 strict concurrency changes. Referenced by the [swift6 skill](../skills/swift6/SKILL.md). All commands use [xcode-distill.py](../scripts/xcode-distill.py) to keep output token-efficient — see the [xcodebuild skill](../skills/xcodebuild/SKILL.md).
 
-## Tier 1 — Compile Check
+## Tier 1 — Compile Check (Distilled)
 
 ```bash
-xcodebuild -scheme <SCHEME> -destination 'generic/platform=iOS Simulator' build 2>&1 | head -50
+xcodebuild build \
+  -workspace <WORKSPACE> \
+  -scheme <SCHEME> \
+  -destination 'generic/platform=iOS Simulator' \
+  2>&1 | python3 docs/scripts/xcode-distill.py compile --scheme <SCHEME> --attempt <N>
 ```
 
 - **Pass:** Zero errors, warning count ≤ previous phase
-- **Fail?** → Fix compilation errors, repeat
+- **Fail?** → Fix compilation errors, increment `--attempt`, repeat
 
-## Tier 2 — Targeted Tests with TSan
+## Tier 2 — Targeted Tests with TSan (Distilled)
 
 Run only the test targets affected by changes:
 
 ```bash
-python3 docs/scripts/tsan-sanitizer.py \
+python3 docs/scripts/xcode-distill.py tsan \
   --scheme <SCHEME> \
   --target <ChangedTestTarget> \
-  --device "iPhone 16 Pro"
+  --device "iPhone 16 Pro" \
+  --attempt <N>
 ```
 
 - **Pass:** All tests pass, zero TSan warnings
-- **Fail?** → Fix data races, repeat from Tier 1
+- **Fail?** → Fix data races, increment `--attempt`, repeat from Tier 1
 
 > [!TIP]
 > Use `--test-class` to narrow further: `--test-class MyViewModelTests`
 
-## Tier 3 — Full Test Suite with TSan
+## Tier 3 — Full Test Suite with TSan (Distilled)
 
 ```bash
-python3 docs/scripts/tsan-sanitizer.py \
+python3 docs/scripts/xcode-distill.py tsan \
   --scheme <SCHEME> \
   --device "iPhone 16 Pro"
 ```
 
 - **Pass:** All tests pass, zero TSan warnings
 - **Fail?** → Fix regressions, repeat from Tier 1
+
+> [!WARNING]
+> If `--attempt` reaches 3, the script triggers the **circuit breaker**. Follow the revert instructions unconditionally.
 
 ## Tier 4 — Real Device Deployment
 

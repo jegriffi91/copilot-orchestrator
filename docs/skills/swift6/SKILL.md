@@ -11,6 +11,9 @@ You are guiding a phased migration to Swift 6 strict concurrency. Follow each ph
 - `filesystem` — Read/write Swift source files
 - `git` — Commit after each phase
 
+## Required Skills
+- [xcodebuild](../xcodebuild/SKILL.md) — Run Xcode commands with distilled output (never raw)
+
 ## Procedure
 
 ### 1. **Phase 0 — Zero-Risk Changes**
