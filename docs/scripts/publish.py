@@ -36,8 +36,8 @@ PATHS = {
     "standards": PROJECT_ROOT / "docs/standards",
     "workflows": PROJECT_ROOT / "docs/workflows",
     "skills_source": PROJECT_ROOT / "docs/skills",
-    "agents_output": PROJECT_ROOT / ".copilot/agents",
-    "skills_output": PROJECT_ROOT / ".copilot/skills",
+    "agents_output": PROJECT_ROOT / ".github/agents",
+    "skills_output": PROJECT_ROOT / ".github/skills",
 }
 
 # Agent Recipes: maps output filename → persona + sources + tags + skills

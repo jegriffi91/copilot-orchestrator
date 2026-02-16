@@ -3,7 +3,7 @@ agent: testing
 name: testing
 description: Specialist in Unit Testing, Mocking Strategies, and Snapshot Tests.
 version: 1.0.0
-generated: 2026-02-15 08:23:28
+generated: 2026-02-15 17:45:12
 tags: testing, common, ci
 ---
 

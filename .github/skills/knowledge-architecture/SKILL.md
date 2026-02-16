@@ -101,7 +101,6 @@ An agent file contains three sections, each from a different source:
 |---------|--------|---------|
 | **IDENTITY** | `docs/personas/*.md` | Voice, tone, mental model, rejection criteria |
 | **THE LAW** | `docs/standards/` | Tier 1 constitutional rules (max 15) |
-| **SKILLS** | Agent recipe | List of skills the agent can load at runtime |
 
 ### What Stays Out of `.agent.md`
 - Framework-specific rules (belong in skills)

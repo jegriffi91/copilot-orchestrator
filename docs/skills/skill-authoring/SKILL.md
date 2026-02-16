@@ -144,7 +144,7 @@ python3 docs/scripts/publish.py agents
 ### Step 4: Validate
 - [ ] Persona exists in `docs/personas/`
 - [ ] Recipe added to `publish.py`
-- [ ] Agent generated in `.copilot/agents/`
+- [ ] Agent generated in `.github/agents/`
 - [ ] Agent frontmatter is compatible with target harness
 
 ---
@@ -172,7 +172,7 @@ After completing skill/agent creation, report:
 ## Constraints
 
 - Skills go in `docs/skills/` (LLM-agnostic location)
-- Agents output to `.copilot/agents/` (vendor-specific)
+- Agents output to `.github/agents/` (vendor-specific)
 - Personas stay under 50 lines
 - Skill procedures should be numbered, not bulleted
 - Always include Verification section for code-modifying skills

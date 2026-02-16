@@ -71,7 +71,7 @@ Add persona to chat context:
 Personas are compiled into specialized agents via `docs/scripts/publish.py`:
 ```bash
 python3 docs/scripts/publish.py agents
-# Outputs: .copilot/agents/*.agent.md
+# Outputs: .github/agents/*.agent.md
 ```
 
 Compiled agents combine Persona + Standards + Workflows into a single deployable file. At runtime, agents can also **load Skills** on-demand from `docs/skills/`.

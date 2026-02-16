@@ -8,11 +8,11 @@ The `publish.py` script is the unified pipeline for compiling agents and publish
 
 ```
 docs/personas/         ──┐
-docs/standards/        ──┤── publish.py agents ──→ .copilot/agents/*.agent.md
+docs/standards/        ──┤── publish.py agents ──→ .github/agents/*.agent.md
 AGENT_RECIPES config   ──┘
 
 docs/skills/*/SKILL.md ──┐
-docs/skills/*/refs/    ──┤── publish.py skills ──→ .copilot/skills/*/
+docs/skills/*/refs/    ──┤── publish.py skills ──→ .github/skills/*/
                          └── generates _skill_catalog.md
 ```
 
@@ -25,7 +25,7 @@ Compiles agent files from personas + standards:
 1. Reads `AGENT_RECIPES` configuration (maps output filename → persona + sources + tags)
 2. Scans `docs/personas/` for the persona file
 3. Scans `docs/standards/` for rules matching allowed tags
-4. Compiles into `.copilot/agents/<name>.agent.md` with sections:
+4. Compiles into `.github/agents/<name>.agent.md` with sections:
    - **IDENTITY** — from persona file
    - **THE LAW** — from filtered standards rules
    - **SKILLS** — list of linked skills from recipe
@@ -44,7 +44,7 @@ Publishes skills + references to vendor directories:
 3. Applies shadow frontmatter (strips non-standard YAML fields for vendor compatibility)
 4. Copies `references/` and `templates/` subdirectories alongside SKILL.md
 5. Generates `_skill_catalog.md` discovery index
-6. Outputs to `.copilot/skills/`
+6. Outputs to `.github/skills/`
 
 **When to re-run:**
 - After creating or editing a SKILL.md
@@ -74,7 +74,7 @@ AGENT_RECIPES = {
 Some vendors (e.g., GitHub Copilot CLI) don't support custom YAML fields. Shadow frontmatter strips non-standard fields while preserving the content:
 
 ```
-Original (docs/skills/):          Published (.copilot/skills/):
+Original (docs/skills/):          Published (.github/skills/):
 ---                               ---
 name: swiftui                     name: swiftui
 description: ...                  description: ...
@@ -101,8 +101,8 @@ Agents use this catalog to discover which skills are available at runtime.
 
 | Command | Output |
 |---------|--------|
-| `publish.py agents` | `.copilot/agents/*.agent.md` |
-| `publish.py skills` | `.copilot/skills/<name>/SKILL.md` + `references/` |
+| `publish.py agents` | `.github/agents/*.agent.md` |
+| `publish.py skills` | `.github/skills/<name>/SKILL.md` + `references/` |
 
 ## Validation Checks
 

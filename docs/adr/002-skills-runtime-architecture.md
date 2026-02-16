@@ -459,7 +459,7 @@ docs/skills/                    ← Source of truth (LLM-agnostic)
      │
      ├── .github/skills/        ← GitHub Copilot CLI
      │   └── _skill_catalog.md  ← Discovery index
-     ├── .copilot/skills/       ← Alternative Copilot location
+     ├── .github/skills/       ← Alternative Copilot location
      └── .cursor/skills/        ← Cursor (if needed)
 ```
 
@@ -581,7 +581,7 @@ import shutil
 SKILLS_SOURCE = Path("docs/skills")
 VENDOR_OUTPUTS = [
     Path(".github/skills"),
-    Path(".copilot/skills"),
+    Path(".github/skills"),
 ]
 
 # Fields that Copilot CLI accepts

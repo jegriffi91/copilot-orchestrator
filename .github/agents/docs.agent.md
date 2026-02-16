@@ -3,7 +3,7 @@ agent: docs
 name: docs
 description: Documentation specialist. Creates skills, agents, and personas. Organizes knowledge architecture and enforces the 3-tier hierarchy.
 version: 1.0.0
-generated: 2026-02-15 08:23:28
+generated: 2026-02-15 17:45:12
 tags: docs, common
 ---
 
