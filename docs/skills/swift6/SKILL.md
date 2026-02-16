@@ -61,6 +61,39 @@ public actor MetricsStore {
 
 > **Cascade:** Every call site now requires `await`. This is why you start with leaf nodes — fewer callers = smaller cascade.
 
+#### Actor Reentrancy — Check Every `await` Inside an Actor
+
+When you convert a class to an actor, every `await` inside the actor is a **suspension point** where other callers can interleave. The compiler allows this, TSan cannot catch it, but it silently violates invariants.
+
+**Checklist for every actor method containing `await`:**
+- [ ] Does this method read state, `await`, then write state?
+- [ ] If yes, re-validate the state **after** the `await`
+- [ ] Consider extracting the async work outside the actor and passing only the result back
+
+```swift
+// ❌ BAD: Check-then-act across suspension point
+actor AccountManager {
+    private var balance: Decimal = 100
+    func withdraw(_ amount: Decimal) async throws {
+        guard balance >= amount else { throw InsufficientFunds() }
+        // ⚠️ SUSPENSION POINT — another caller can interleave here
+        let receipt = await paymentGateway.process(amount)
+        balance -= amount  // STALE — balance may have changed
+    }
+}
+
+// ✅ GOOD: Re-validate after suspension
+actor AccountManager {
+    private var balance: Decimal = 100
+    func withdraw(_ amount: Decimal) async throws {
+        guard balance >= amount else { throw InsufficientFunds() }
+        let receipt = await paymentGateway.process(amount)
+        guard balance >= amount else { throw InsufficientFunds() }
+        balance -= amount
+    }
+}
+```
+
 **Commit gate:** Build succeeds, all tests pass.
 
 ---
@@ -102,6 +135,30 @@ final class ViewModelTests: XCTestCase {
             viewModel = nil
         }
         try await super.tearDown()
+    }
+}
+```
+
+#### Protocol Isolation — Never `@MainActor` on Abstract Protocols
+
+Do NOT apply `@MainActor` to an abstract protocol definition because one conformance happens to touch UI. This virally routes all conformances (including background work) to the main thread.
+
+```swift
+// ❌ BAD: Viral @MainActor on protocol
+@MainActor
+protocol NetworkDelegate {
+    func didFinish(_ result: Result<Data, Error>)
+}
+
+// ✅ GOOD: Handle isolation at the conformance site
+protocol NetworkDelegate: Sendable {
+    func didFinish(_ result: Result<Data, Error>)
+}
+
+@MainActor
+class MyViewController: NetworkDelegate {
+    func didFinish(_ result: Result<Data, Error>) {
+        // Already @MainActor via class annotation
     }
 }
 ```
@@ -163,6 +220,69 @@ public class TaskManager: NSObject {
             self.processNotification(note)
         }
     }
+}
+```
+
+#### Continuation Safety (`withCheckedContinuation`)
+
+Legacy completion-handler APIs must be bridged to `async/await` via `withCheckedContinuation` or `withCheckedThrowingContinuation`. **A continuation must be resumed exactly once.** If the LLM misses an early `return` or `catch` block, the calling Task suspends **forever** (silent app freeze — TSan cannot catch this).
+
+```swift
+// ❌ BAD: Missing resume on early return
+func fetchUser(id: String) async throws -> User {
+    try await withCheckedThrowingContinuation { continuation in
+        legacyFetch(id: id) { result in
+            guard let user = result else { return }  // 💀 Leaked continuation!
+            continuation.resume(returning: user)
+        }
+    }
+}
+
+// ✅ GOOD: defer guarantees resume on all paths
+func fetchUser(id: String) async throws -> User {
+    try await withCheckedThrowingContinuation { continuation in
+        legacyFetch(id: id) { result in
+            switch result {
+            case .success(let user):
+                continuation.resume(returning: user)
+            case .failure(let error):
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+}
+```
+
+**Checklist for each `withCheckedContinuation`:**
+- [ ] Is `.resume()` called on **every** branch (success, failure, early return)?
+- [ ] For complex control flow, is `defer` used to guarantee resumption?
+- [ ] For cancellable APIs, is `withTaskCancellationHandler` used?
+
+#### Sync-to-Async Bridging (No Semaphores)
+
+Never use `DispatchSemaphore`, `DispatchGroup.wait()`, or OS locks to block a thread while waiting for async work. Swift Concurrency uses a fixed-width cooperative thread pool (~1 thread per core). Blocking a thread while awaiting an async Task causes **permanent deadlock**.
+
+```swift
+// ❌ BAD: Thread pool deadlock
+func syncWrapper() -> Data {
+    let semaphore = DispatchSemaphore(value: 0)
+    var result: Data?
+    Task {
+        result = await fetchData()  // Queued on the thread you just blocked
+        semaphore.signal()
+    }
+    semaphore.wait()  // 💀 Deadlock
+    return result!
+}
+
+// ✅ GOOD: Propagate async up the call stack
+func asyncWrapper() async -> Data {
+    await fetchData()
+}
+
+// ✅ GOOD: Fire-and-forget if caller doesn't need the result
+func triggerRefresh() {
+    Task { await fetchData() }  // OK — not blocking
 }
 ```
 
@@ -274,7 +394,14 @@ After each phase, report:
 
 - **One phase per commit.** Do not batch phases.
 - **Every `nonisolated(unsafe)` must have a justification comment.** No exceptions.
-- **Never use `@unchecked Sendable`** unless the type is genuinely thread-safe AND has no Sendable alternative. Prefer `nonisolated(unsafe)` for singletons.
+- **Never use `@unchecked Sendable`.** There is no valid use case that cannot be handled by `actor`, `Sendable` value types, or `nonisolated(unsafe)` with justification.
+- **Never use `.assumeIsolated`.** It bypasses the compiler's isolation checks and crashes at runtime if the assumption is wrong.
+- **Never use `DispatchSemaphore`, `DispatchGroup.wait()`, or OS locks** to block a thread while waiting for async work. This causes thread pool deadlock.
+- **Never use unstructured `Task {}` or `Task.detached`** merely to silence isolation mismatches. Prefer `async let`, `TaskGroup`, or propagating `async` up the call stack. `Task.detached` is only permitted for explicit root-level background processes.
+- **Never apply `@MainActor` to non-UI classes** (networking, persistence, crypto, parsers). These belong in Phase 1 (actor isolation) or remain as plain classes with Sendable value types.
+- **Never apply `@MainActor` to abstract protocol definitions** unless the protocol explicitly inherits from a UI framework type. Handle isolation at the conformance site.
+- **`@preconcurrency import` is only for 3rd-party/system frameworks.** It is strictly forbidden on 1st-party internal project modules.
+- **Every `withCheckedContinuation` must resume exactly once** on all branches (success, failure, early return). Use `defer` for complex control flow.
 - **Third-party frameworks:** Use `@preconcurrency import`. If a type isn't `Sendable`, work around it (extract data, don't store the type).
 - **Test code gets the same care as production code.** Concurrency bugs in tests are still bugs.
 
@@ -282,9 +409,10 @@ After each phase, report:
 
 Follow [swift6-verify](../../workflows/swift6-verify.md) after each phase:
 
-1. **Tier 1:** `swift build` / `xcodebuild build` — zero errors
-2. **Tier 2:** Run targeted tests with TSan (`docs/scripts/tsan-sanitizer.py`)
-3. **Tier 3:** Full test suite with TSan — zero warnings
-4. **Tier 4:** Deploy to real device — test Background Refresh, Notifications, CloudKit
-5. **Fail?** → Fix and repeat from Tier 1
-6. **Pass?** → Commit and proceed to next phase
+1. **Tier 0:** `xcode-distill.py lint-diff` — zero forbidden concurrency patterns in diff
+2. **Tier 1:** `xcodebuild build ... | xcode-distill.py compile` — zero errors
+3. **Tier 2:** `xcode-distill.py tsan --target <ChangedTarget>` — zero TSan warnings, zero timeouts
+4. **Tier 3:** `xcode-distill.py tsan` (full suite) — zero warnings
+5. **Tier 4:** Deploy to real device — test Background Refresh, Notifications, CloudKit
+6. **Fail?** → Fix and repeat from Tier 0
+7. **Pass?** → Commit and proceed to next phase

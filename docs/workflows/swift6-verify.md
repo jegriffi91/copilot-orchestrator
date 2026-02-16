@@ -2,7 +2,29 @@
 
 Verification procedure for Swift 6 strict concurrency changes. Referenced by the [swift6 skill](../skills/swift6/SKILL.md). All commands use [xcode-distill.py](../scripts/xcode-distill.py) to keep output token-efficient — see the [xcodebuild skill](../skills/xcodebuild/SKILL.md).
 
+## Tier 0 — Diff Lint (Concurrency Guardrails)
+
+Before compiling, lint the diff for forbidden concurrency patterns:
+
+```bash
+python3 docs/scripts/xcode-distill.py lint-diff
+```
+
+Or from a specific diff file:
+```bash
+git diff HEAD~1 | python3 docs/scripts/xcode-distill.py lint-diff
+```
+
+- **Pass:** Zero errors, warnings reviewed
+- **Fail?** → Remove forbidden patterns (`@unchecked Sendable`, `.assumeIsolated`, `DispatchSemaphore`, `Task.detached`). Add justification comments for `nonisolated(unsafe)`. If blast radius exceeded, revert and contain scope.
+
+> [!CAUTION]
+> If Tier 0 fails, do NOT proceed to Tier 1. Fix the violations first.
+
 ## Tier 1 — Compile Check (Distilled)
+
+> [!IMPORTANT]
+> Ensure your project has `SWIFT_STRICT_CONCURRENCY = complete` in build settings. The agent must never weaken this flag.
 
 ```bash
 xcodebuild build \
@@ -17,7 +39,7 @@ xcodebuild build \
 
 ## Tier 2 — Targeted Tests with TSan (Distilled)
 
-Run only the test targets affected by changes:
+Run only the test targets affected by changes. Tests run with **TSan**, **Thread Performance Checker**, and a **30-second timeout** per test (catches hung continuations and deadlocks):
 
 ```bash
 python3 docs/scripts/xcode-distill.py tsan \
@@ -27,8 +49,9 @@ python3 docs/scripts/xcode-distill.py tsan \
   --attempt <N>
 ```
 
-- **Pass:** All tests pass, zero TSan warnings
+- **Pass:** All tests pass, zero TSan warnings, zero timeouts
 - **Fail?** → Fix data races, increment `--attempt`, repeat from Tier 1
+- **Timeout?** → Audit `withCheckedContinuation` for missing `.resume()`, check for `DispatchSemaphore` deadlocks
 
 > [!TIP]
 > Use `--test-class` to narrow further: `--test-class MyViewModelTests`
@@ -41,7 +64,7 @@ python3 docs/scripts/xcode-distill.py tsan \
   --device "iPhone 16 Pro"
 ```
 
-- **Pass:** All tests pass, zero TSan warnings
+- **Pass:** All tests pass, zero TSan warnings, zero timeouts
 - **Fail?** → Fix regressions, repeat from Tier 1
 
 > [!WARNING]

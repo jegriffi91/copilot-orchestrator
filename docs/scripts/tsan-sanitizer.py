@@ -273,6 +273,9 @@ def run_tsan(
         "-scheme", scheme,
         "-destination", destination,
         "-enableThreadSanitizer", "YES",
+        "-enableThreadPerformanceChecker", "YES",
+        "-test-timeouts-enabled", "YES",
+        "-maximum-test-execution-time-allowance", "30",
         "-quiet"
     ]
     

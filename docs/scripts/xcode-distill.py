@@ -657,13 +657,29 @@ def cmd_tsan(args: argparse.Namespace) -> None:
 
         # Post-process: prune system frames from TSan output
         pruned_lines = []
+        has_timeout = False
         for line in output.splitlines():
             if line.strip().startswith("→") or line.strip().startswith("#"):
                 if is_system_frame(line):
                     continue
+            # Detect test timeouts (hung continuation / deadlock)
+            if "exceeded time limit" in line.lower() or "test timed out" in line.lower():
+                has_timeout = True
             pruned_lines.append(line)
 
         print("\n".join(pruned_lines))
+
+        # Emit timeout diagnostic if detected
+        if has_timeout:
+            print("\n## ⚠️ TEST TIMEOUT DETECTED\n")
+            print(
+                "One or more tests exceeded the 30-second time limit. "
+                "This typically indicates:\n"
+                "- A `withCheckedContinuation` with a missing `.resume()` on some branch\n"
+                "- A `DispatchSemaphore` / `DispatchGroup.wait()` deadlocking the cooperative thread pool\n"
+                "- An actor method waiting on itself (reentrancy deadlock)\n\n"
+                "**Action:** Audit suspension points and sync-blocking patterns in the affected test's code path.\n"
+            )
 
         # Append circuit breaker if needed
         cb = format_circuit_breaker(args.attempt)
@@ -672,6 +688,308 @@ def cmd_tsan(args: argparse.Namespace) -> None:
 
     except subprocess.TimeoutExpired:
         print("❌ TSan run timed out.", file=sys.stderr)
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# Subcommand: lint-diff
+# ---------------------------------------------------------------------------
+
+# Forbidden patterns — hard reject
+FORBIDDEN_PATTERNS: List[Tuple[re.Pattern, str, str]] = [
+    (
+        re.compile(r"@unchecked\s+Sendable"),
+        "@unchecked Sendable",
+        "Unsafe concurrency bypass. Use `actor`, `Sendable` value types, or `nonisolated(unsafe)` with justification.",
+    ),
+    (
+        re.compile(r"\.assumeIsolated"),
+        ".assumeIsolated",
+        "Bypasses compiler isolation checks. Crashes at runtime if assumption is wrong.",
+    ),
+    (
+        re.compile(r"DispatchSemaphore\s*\("),
+        "DispatchSemaphore",
+        "Blocks the cooperative thread pool, causing deadlock. Propagate `async` up the call stack instead.",
+    ),
+    (
+        re.compile(r"DispatchGroup\(\)\.wait\(\)|dispatchGroup\.wait\(\)", re.IGNORECASE),
+        "DispatchGroup.wait()",
+        "Blocks the cooperative thread pool, causing deadlock. Use `async let` or `TaskGroup` instead.",
+    ),
+    (
+        re.compile(r"Task\.detached"),
+        "Task.detached",
+        "Breaks structured concurrency. Use `Task {}`, `async let`, or `TaskGroup`. "
+        "Task.detached is only permitted for root-level background processes with explicit justification.",
+    ),
+]
+
+# Conditional patterns — reject without justification
+CONDITIONAL_PATTERNS: List[Tuple[re.Pattern, str, str]] = [
+    (
+        re.compile(r"nonisolated\s*\(\s*unsafe\s*\)"),
+        "nonisolated(unsafe)",
+        "Requires a justification comment on the preceding line. "
+        "Allowed for `static let` singletons with thread-safe initialization.",
+    ),
+]
+
+# Warning patterns — warn only
+WARN_PATTERNS: List[Tuple[re.Pattern, str, str]] = [
+    (
+        re.compile(r"@preconcurrency\s+import"),
+        "@preconcurrency import",
+        "Verify this is a 3rd-party/system framework. "
+        "@preconcurrency is strictly forbidden on 1st-party internal modules.",
+    ),
+]
+
+
+@dataclass
+class LintViolation:
+    """A concurrency lint violation found in a diff."""
+
+    file_path: str
+    line_num: int  # Line number in the diff hunk (approximate)
+    pattern_name: str
+    severity: str  # "error", "warning"
+    message: str
+    diff_line: str
+
+
+def parse_diff_for_violations(
+    diff_text: str, max_files: int = 15
+) -> Tuple[List[LintViolation], Optional[str]]:
+    """Parse unified diff text for concurrency violations.
+
+    Returns:
+        Tuple of (violations list, blast_radius_message or None)
+    """
+    violations: List[LintViolation] = []
+    current_file = ""
+    current_line = 0
+    changed_files: Set[str] = set()
+
+    # Track files touched in the diff
+    file_header_re = re.compile(r"^\+\+\+\s+b/(.+)$")
+    hunk_header_re = re.compile(r"^@@\s+-\d+(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@")
+
+    lines = diff_text.splitlines()
+    prev_line = ""
+
+    for line in lines:
+        # Track current file
+        file_match = file_header_re.match(line)
+        if file_match:
+            current_file = file_match.group(1)
+            changed_files.add(current_file)
+            current_line = 0
+            prev_line = ""
+            continue
+
+        # Track current line number
+        hunk_match = hunk_header_re.match(line)
+        if hunk_match:
+            current_line = int(hunk_match.group(1))
+            prev_line = ""
+            continue
+
+        # Only check added lines (lines starting with +)
+        if not line.startswith("+") or line.startswith("+++"):
+            if not line.startswith("-"):
+                current_line += 1
+            prev_line = line
+            continue
+
+        added_content = line[1:]  # Strip leading +
+        current_line += 1
+
+        # Skip comment-only lines (they're justification comments, not code)
+        stripped_content = added_content.strip()
+        if stripped_content.startswith("//") or stripped_content.startswith("/*") or stripped_content.startswith("*"):
+            prev_line = line
+            continue
+
+        # Check forbidden patterns
+        for pattern, name, message in FORBIDDEN_PATTERNS:
+            if pattern.search(added_content):
+                violations.append(
+                    LintViolation(
+                        file_path=current_file,
+                        line_num=current_line,
+                        pattern_name=name,
+                        severity="error",
+                        message=message,
+                        diff_line=added_content.strip(),
+                    )
+                )
+
+        # Check conditional patterns (need justification comment on preceding line)
+        for pattern, name, message in CONDITIONAL_PATTERNS:
+            if pattern.search(added_content):
+                # Check if preceding line in the diff is a justification comment
+                has_justification = False
+                prev_stripped = prev_line.lstrip("+").strip()
+                if prev_stripped.startswith("//") and any(
+                    kw in prev_stripped.lower()
+                    for kw in ["justification", "safety", "thread-safe", "rationale"]
+                ):
+                    has_justification = True
+
+                if not has_justification:
+                    violations.append(
+                        LintViolation(
+                            file_path=current_file,
+                            line_num=current_line,
+                            pattern_name=name,
+                            severity="error",
+                            message=f"Missing justification comment. {message}",
+                            diff_line=added_content.strip(),
+                        )
+                    )
+
+        # Check warning patterns
+        for pattern, name, message in WARN_PATTERNS:
+            if pattern.search(added_content):
+                violations.append(
+                    LintViolation(
+                        file_path=current_file,
+                        line_num=current_line,
+                        pattern_name=name,
+                        severity="warning",
+                        message=message,
+                        diff_line=added_content.strip(),
+                    )
+                )
+
+        prev_line = line
+
+    # Blast radius check
+    blast_msg = None
+    if len(changed_files) > max_files:
+        blast_msg = (
+            f"Scope Violation: Your concurrency changes modified {len(changed_files)} files "
+            f"(max: {max_files}). This suggests a viral cascade from a protocol or global actor change. "
+            f"Revert and handle isolation at the local conformance site to contain the blast radius."
+        )
+
+    return violations, blast_msg
+
+
+def format_lint_markdown(
+    violations: List[LintViolation], blast_msg: Optional[str] = None
+) -> str:
+    """Format lint violations as Markdown."""
+    lines: List[str] = []
+
+    errors = [v for v in violations if v.severity == "error"]
+    warnings = [v for v in violations if v.severity == "warning"]
+
+    if not violations and not blast_msg:
+        lines.append("## Diff Lint: ✅ No concurrency violations\n")
+        return "\n".join(lines)
+
+    lines.append(f"## Diff Lint: {len(errors)} errors, {len(warnings)} warnings\n")
+
+    if blast_msg:
+        lines.append(f"> [!CAUTION]")
+        lines.append(f"> {blast_msg}\n")
+
+    if errors:
+        lines.append("### ❌ Forbidden Patterns\n")
+        by_file: Dict[str, List[LintViolation]] = defaultdict(list)
+        for v in errors:
+            by_file[v.file_path].append(v)
+
+        for file_path, file_violations in sorted(by_file.items()):
+            lines.append(f"#### {Path(file_path).name}")
+            for v in file_violations:
+                lines.append(f"- **L{v.line_num}** `{v.pattern_name}`: {v.message}")
+                lines.append(f"  ```\n  {v.diff_line}\n  ```")
+            lines.append("")
+
+    if warnings:
+        lines.append("### ⚠️ Warnings\n")
+        for v in warnings:
+            lines.append(
+                f"- `{Path(v.file_path).name}:{v.line_num}` `{v.pattern_name}`: {v.message}"
+            )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_lint_json(
+    violations: List[LintViolation], blast_msg: Optional[str] = None
+) -> str:
+    """Format lint violations as JSON."""
+    output = {
+        "errors": len([v for v in violations if v.severity == "error"]),
+        "warnings": len([v for v in violations if v.severity == "warning"]),
+        "blast_radius_violation": blast_msg,
+        "violations": [
+            {
+                "file": v.file_path,
+                "line": v.line_num,
+                "pattern": v.pattern_name,
+                "severity": v.severity,
+                "message": v.message,
+            }
+            for v in violations
+        ],
+    }
+    return json.dumps(output, indent=2)
+
+
+def cmd_lint_diff(args: argparse.Namespace) -> None:
+    """Lint a git diff for forbidden concurrency patterns."""
+    if args.diff_file:
+        with open(args.diff_file, "r") as f:
+            diff_text = f.read()
+    else:
+        # Read diff from stdin or run git diff
+        if sys.stdin.isatty():
+            # Auto-run git diff for staged changes
+            try:
+                result = subprocess.run(
+                    ["git", "diff", "--cached", "--unified=3"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                diff_text = result.stdout
+                if not diff_text:
+                    # Fall back to unstaged diff
+                    result = subprocess.run(
+                        ["git", "diff", "--unified=3"],
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                    )
+                    diff_text = result.stdout
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                print("❌ git not found or timed out. Use --diff to provide a diff file.", file=sys.stderr)
+                sys.exit(1)
+        else:
+            diff_text = sys.stdin.read()
+
+    if not diff_text.strip():
+        print("## Diff Lint: ✅ No changes to lint\n")
+        return
+
+    violations, blast_msg = parse_diff_for_violations(
+        diff_text, max_files=args.max_files
+    )
+
+    if args.json:
+        print(format_lint_json(violations, blast_msg))
+    else:
+        print(format_lint_markdown(violations, blast_msg))
+
+    # Exit with non-zero if errors found
+    errors = [v for v in violations if v.severity == "error"]
+    if errors or blast_msg:
         sys.exit(1)
 
 
@@ -793,6 +1111,22 @@ Examples:
     )
     p_tsan.add_argument("--json", action="store_true", help="Output JSON format")
 
+    # --- lint-diff ---
+    p_lint = subparsers.add_parser(
+        "lint-diff",
+        help="Lint git diff for forbidden concurrency patterns",
+    )
+    p_lint.add_argument(
+        "--diff", dest="diff_file", help="Path to a unified diff file (default: auto-run git diff)"
+    )
+    p_lint.add_argument(
+        "--max-files",
+        type=int,
+        default=15,
+        help="Max files allowed in diff before blast radius rejection (default: 15)",
+    )
+    p_lint.add_argument("--json", action="store_true", help="Output JSON format")
+
     args = parser.parse_args()
 
     if not args.command:
@@ -807,6 +1141,8 @@ Examples:
         cmd_test(args)
     elif args.command == "tsan":
         cmd_tsan(args)
+    elif args.command == "lint-diff":
+        cmd_lint_diff(args)
 
 
 if __name__ == "__main__":
