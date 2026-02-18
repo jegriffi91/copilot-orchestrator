@@ -68,7 +68,7 @@ Generated agents contain two primary sections:
 **Rejected:** Doesn't scale. Mixing personas with technical rules creates maintenance burden. Can't share rules across agents.
 
 ### 2. Runtime MCP Tool Injection
-**Partially Adopted:** The MCP orchestrator handles multi-agent delegation, but agent identity still needs static compilation for consistency.
+**Partially Adopted:** The MCP orchestrator handled multi-agent delegation (now superseded by [Orchard](https://github.com/jegriffi91/orchard)), but agent identity still needs static compilation for consistency.
 
 ### 3. LLM-Native Memory Features
 **Rejected:** Vendor-specific (Copilot memory, Claude projects). Doesn't provide version control or reproducibility.

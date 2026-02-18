@@ -1,15 +1,3 @@
 {
-    "mcpServers": {
-        "orchestrator": {
-            "command": "npx",
-            "args": [
-                "tsx",
-                "/Users/jgriffin/dev/copilot-orchestrator/.copilot/orchestrator/src/index.ts"
-            ],
-            "env": {
-                "WORKFLOWS_DIR": "/Users/jgriffin/dev/copilot-orchestrator/.copilot/workflows",
-                "AGENTS_DIR": "/Users/jgriffin/dev/copilot-orchestrator/.copilot/agents"
-            }
-        }
-    }
+    "mcpServers": {}
 }

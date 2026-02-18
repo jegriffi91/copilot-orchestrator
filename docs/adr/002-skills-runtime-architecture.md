@@ -335,7 +335,7 @@ The relationship between Skills and Agents is complementary. Additionally, **Orc
 
 ### Phase 3: Runtime Loader (Implementation)
 
-- Implement skill discovery in MCP orchestrator
+- ~~Implement skill discovery in MCP orchestrator~~ (superseded by [Orchard](https://github.com/jegriffi91/orchard))
 - Add `load_skill` tool for dynamic injection
 - Deprecate `stitch-brain.py` recipe system
 
@@ -693,7 +693,7 @@ make publish  # Runs both
 
 - [ADR-001: Stitched Brain Architecture](001-stitched-brain-architecture.md)
 - [Agents vs Skills Knowledge](../README.md)
-- [MCP Orchestrator README](../../.copilot/tools/orchestrator/README.md)
+- [Orchard — Agent-Agnostic Orchestration](https://github.com/jegriffi91/orchard) (replaces MCP Orchestrator)
 
 ---
 

@@ -49,7 +49,7 @@ Personas define *voice*, not *knowledge*. Keep them under 50 lines. Technical ru
 
 ## Rule 4: No Orchestration in Agents
 
-Agent personas must focus on identity and rejection criteria. They must **never** include orchestration instructions like "read this file", "write to .result.md", or "delegate to agent X". Orchestration is the job of the MCP orchestrator tool.
+Agent personas must focus on identity and rejection criteria. They must **never** include orchestration instructions like "read this file", "write to .result.md", or "delegate to agent X". Orchestration is the job of the orchestration runtime ([Orchard](https://github.com/jegriffi91/orchard)).
 
 ## Rule 5: Imperative Triggers
 

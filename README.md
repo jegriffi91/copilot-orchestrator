@@ -89,7 +89,6 @@ copilot-orchestrator/
 │   ├── workflows/                  #   Verification procedures (THE LOOP)
 │   ├── scripts/                    #   Build tooling
 │   │   ├── publish.py              #     Unified pipeline (agents + skills)
-│   │   ├── stitch-brain.py         #     [DEPRECATED] Wrapper → publish.py agents
 │   │   └── tsan-sanitizer.py       #     Output sanitizer for TSan logs
 │   ├── adr/                        #   Architecture Decision Records
 │   └── resources/                  #   Research & reference materials
@@ -97,7 +96,6 @@ copilot-orchestrator/
 ├── .copilot/                       # ← Vendor: GitHub Copilot CLI
 │   ├── agents/                     #   Compiled specialist agents
 │   ├── skills/                     #   Published skills + references
-│   ├── tools/orchestrator/         #   MCP server (multi-agent delegation)
 │   ├── config.json                 #   Model tiering configuration
 │   └── mcp-config.json             #   MCP server registration
 ```
@@ -113,32 +111,32 @@ User Request
      │
      ▼
 ┌─────────────────────┐
-│ 1. Parse Intent      │  "I need to review this code"
+│ 1. Parse Intent     │  "I need to review this code"
 └─────────────────────┘
      │
      ▼
 ┌─────────────────────┐
-│ 2. Match Skill       │  Skill Catalog → code-review
+│ 2. Match Skill      │  Skill Catalog → code-review
 └─────────────────────┘
      │
      ▼
 ┌─────────────────────┐
-│ 3. Load Skill        │  Inject docs/skills/code-review/SKILL.md
+│ 3. Load Skill       │  Inject docs/skills/code-review/SKILL.md
 └─────────────────────┘
      │
      ▼
 ┌─────────────────────┐
-│ 4. Execute via MCP   │  Agent follows procedure, calls tools
+│ 4. Execute via MCP  │  Agent follows procedure, calls tools
 └─────────────────────┘
      │
      ▼
 ┌─────────────────────┐
-│ 5. Verify            │  Run verification from docs/workflows/
+│ 5. Verify           │  Run verification from docs/workflows/
 └─────────────────────┘
      │
      ▼
 ┌─────────────────────┐
-│ 6. Cleanup           │  Unload skill, summarize results
+│ 6. Cleanup          │  Unload skill, summarize results
 └─────────────────────┘
 ```
 
@@ -203,10 +201,11 @@ The architecture is harness-agnostic by design:
 
 | Target | Status | Integration |
 |--------|--------|-------------|
-| GitHub Copilot CLI | ✅ Active | `.copilot/agents/` + MCP server |
+| GitHub Copilot CLI | ✅ Active | `.copilot/agents/` |
 | Cursor | 🔄 Planned | `.cursor/rules/` via `publish.py skills` |
-| Claude / Anthropic | 🔄 Planned | System prompts + MCP |
+| Claude / Anthropic | 🔄 Planned | System prompts |
 | Custom Tooling | 🔄 Planned | Direct `docs/` consumption |
+| **Multi-Agent Orchestration** | ✅ Active | **[Orchard](https://github.com/jegriffi91/orchard)** — agent-agnostic runtime |
 
 The same personas, standards, and skills generate agents for any target. Only the compilation/publishing step changes.
 
@@ -220,7 +219,7 @@ The same personas, standards, and skills generate agents for any target. Only th
 | [Standards README](docs/standards/README.md) | Writing domain rules |
 | [Skills README](docs/skills/README.md) | Building procedural knowledge |
 | [Workflows README](docs/workflows/README.md) | Verification procedures |
-| [Orchestrator README](.copilot/tools/orchestrator/README.md) | MCP server setup |
+| [Orchestration](https://github.com/jegriffi91/orchard) | Multi-agent orchestration (replaced MCP server) |
 | [ADR-001](docs/adr/001-stitched-brain-architecture.md) | Stitched Brain architecture |
 | [ADR-002](docs/adr/002-skills-runtime-architecture.md) | Skills Runtime architecture |
 
